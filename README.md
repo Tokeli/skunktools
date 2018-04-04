@@ -4,7 +4,9 @@ Heavy WIP.
 A Blender addon with a tiny collection of useful features, mainly for aiding SecondLife content creation. Slowly adding new stuff.
 
 Don't know what I'm doing so it's a mess. 8)
-
+## Installation ##
+Download the single file and install it from the Addons section of Blender's preferences, like any other.
+## Tools ##
 ### Create Faces ###
 Adds 8 materials to the file, named 'Face 0' through 'Face 7', and color-coded. This is for the 8-material limit of SL objects.
 
