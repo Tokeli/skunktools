@@ -2,12 +2,12 @@ import bpy, bmesh, uuid
 bl_info = {
      "name": "SKNK Tools",
      "author": "Tokeli Zabelin",
-     "version": (0, 5),
+     "version": (1, 0),
      "blender": (2, 7, 9),
      "location": "3D VIEW > Left Toolbar > Tools",
      "description": "A small collection of tools for SL creation.",
      "wiki_url": "",
-     "tracker_url": "",
+     "tracker_url": "https://github.com/Tokeli/skunktools/issues",
      "category": "Object"}
      
 PREFIX = "Face "
