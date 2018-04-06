@@ -2,14 +2,14 @@ import bpy, bmesh, uuid
 bl_info = {
      "name": "SKNK Tools",
      "author": "Tokeli Zabelin",
-     "version": (1, 0),
+     "version": (1, 1),
      "blender": (2, 7, 9),
      "location": "3D VIEW > Left Toolbar > Tools",
      "description": "A small collection of tools for SL creation.",
      "wiki_url": "",
      "tracker_url": "https://github.com/Tokeli/skunktools/issues",
      "category": "Object"}
-     
+       
 PREFIX = "Face "
 COLORS = [
     (1,0,0),(1,0.5,0),(1,1,0),(0,1,0),
@@ -288,6 +288,23 @@ class SetFaces(bpy.types.Operator):
         setSLMaterials(8)
         return {"FINISHED"}
         
+class SwitchToShapeKey(bpy.types.Operator):
+    bl_idname = "sknk.switchshape"
+    bl_label = "Switch to selected Shape"
+    bl_description = "Switches to selected Shape Key's maximum."
+    
+    def execute(self, context):
+        obj = bpy.context.object
+        if obj.active_shape_key is not None:
+            for block in obj.data.shape_keys.key_blocks:
+                block.value = 0
+            obj.active_shape_key.value = 1
+        return {"FINISHED"}
+        
+def render_switch_to_shape_key(self, context):
+    layout = self.layout
+    row = layout.row()
+    row.operator("sknk.switchshape")
 # #####################################################################
 # Cleanup and startup #################################################
 
@@ -334,10 +351,12 @@ def clear_properties():
         
 def register():  
     bpy.utils.register_module(__name__)  
+    bpy.types.DATA_PT_shape_keys.prepend(render_switch_to_shape_key)
     init_properties()
     
 def unregister():
     bpy.utils.unregister_module(__name__)
+    bpy.types.DATA_PT_shape_keys.remove(render_switch_to_shape_key)
     clear_properties()
     
 if __name__ == "__main__":  
