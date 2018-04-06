@@ -6,6 +6,9 @@ A Blender addon with a tiny collection of useful features, mainly for aiding Sec
 Don't know what I'm doing so it's a mess. 8)
 ## Installation ##
 Download the single file and install it from the Addons section of Blender's preferences, like any other.
+## Changes ##
+### Switch to selected Shape ###
+Adds a button to the Shape Keys panel. Will set all shape values to 0 and set the selected to 1. 
 ## Tools ##
 ### Create Faces ###
 Adds 8 materials to the file, named 'Face 0' through 'Face 7', and color-coded. This is for the 8-material limit of SL objects.
