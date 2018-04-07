@@ -2,7 +2,7 @@ import bpy, bmesh, uuid
 bl_info = {
      "name": "SKNK Tools",
      "author": "Tokeli Zabelin",
-     "version": (1, 1),
+     "version": (1, 2),
      "blender": (2, 7, 9),
      "location": "3D VIEW > Left Toolbar > Tools",
      "description": "A small collection of tools for SL creation.",
@@ -94,6 +94,9 @@ class SknkPanel(bpy.types.Panel):
         row = col.row(align=True)        
         row.operator("sknk.applyshapes")
         row.enabled = has_shapes
+        row = col.row(align=True)
+        row.operator("sknk.applymods")
+        row.enabled = c.object.modifiers is not None
         layout.separator()
         
         #################################################################
@@ -168,7 +171,22 @@ class NameFix(bpy.types.Operator):
         for obj in c.selected_objects:
             obj.data.name = obj.name
         return {"FINISHED"}
-        
+    
+class ApplyMods(bpy.types.Operator):
+    bl_idname = ("sknk.applymods")
+    bl_label = "Apply non-Armature Modifiers"
+    bl_description = "Applies any modifier not an armature for all selected, to prepare rigged meshes for export."
+    
+    def execute(self, context):
+        c = bpy.context
+        already_active_obj = c.object
+        for obj in c.selected_objects:
+            c.scene.objects.active = obj
+            for modifier in obj.modifiers:
+                if modifier.type != "ARMATURE":
+                    bpy.ops.object.modifier_apply(modifier=modifier.name)
+        c.scene.objects.active = already_active_obj
+        return {"FINISHED"}
         
 class WeldSelected(bpy.types.Operator):
     bl_idname = ("sknk.weldselected")

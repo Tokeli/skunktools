@@ -28,7 +28,10 @@ For all selected objects, the name of the object is assigned to the datablock as
 An advanced version of the above. For all selected objects, it will look on the set Physics Layer for a selected object in the same position. If one is found, they're both given a randomly-generated name and assigned the suffix "`_object`" and "`_physics`". Non-matching items will be named ORPHAN.
 
 ### Apply Shapekeys ###
-This will simply remove all shapekeys from the selection in a way that preserves how they currently look.
+This will simply remove all shapekeys from selected objects, preserving how they currently look.
+
+### Apply non-Armature Modifiers ###
+This will apply all modifiers on selected objects that aren't an Armature, so they stay rigged.
 
 ### Weld Selected ###
 A non-destructive form of remove doubles. In edit-mode, will snap the selected vertices TO the closest unselected one within the Distance.
