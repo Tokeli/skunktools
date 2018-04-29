@@ -1,13 +1,11 @@
 # skunktools
-Heavy WIP.
-
 A Blender addon with a tiny collection of useful features, mainly for aiding SecondLife content creation. Slowly adding new stuff.
 
 Don't know what I'm doing so it's a mess. 8)
 ## Installation ##
 Download the single file and install it from the Addons section of Blender's preferences, like any other.
 ## Location ##
-Most tools are in a new panel in the Tools tab in 3D view sidebar (Hit T to open the left sidebar).
+Most tools are in a new panel in the Tools tab in the 3D View sidebar. (Hit T in 3D view).
 ## Changes ##
 ### Switch to selected Shape ###
 Adds a button to the Shape Keys panel. Will set all shape values to 0 and set the selected to 1. 
