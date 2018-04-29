@@ -21,17 +21,33 @@ If you have added a texture to a face on the mesh using the UV/Image Editor, thi
 
 This requires you to be in Blender Render mode (top of the screen), and enable Textured Solid under Shading in the right 3D sidebar.
 
+---
+
+### Export Incremented Animation ###
+This is an extra function for the Avastar addon, specifically for SecondLife animations. It lets you export an animation over an over, incrementing the FPS, or start/end frames each time, without manual changes.
+
+You must have an armature selected and it must have an active action for the panel to appear. The settings from the Avastar Animation Export panel are used. Choose an output folder on activation.
+
+### Export Each Anim Frame ###
+This is also for Avastar. Export each frame of an action as a separate 1-frame animation, same requirements as above.
+
+---
+
 ### Match Names ###
 For all selected objects, the name of the object is assigned to the mesh data as well. Maybe you just want to keep track of them, but it's mainly important for uploading multiple objects at once with their physics, as the uploader will go by mesh data name in alphabetical order.
 
 ### Match Physics ###
 An advanced version of the above. For all selected objects, it will look on the set Physics Layer for a selected object in the same position. If one is found, they're both given a randomly-generated name and assigned the suffix "`_object`" and "`_physics`". Non-matching items will be named ORPHAN.
 
+---
+
 ### Apply Shapekeys ###
 This will simply remove all shapekeys from selected objects, preserving how they currently look.
 
 ### Apply non-Armature Modifiers ###
 This will apply all modifiers on selected objects that aren't an Armature, so they stay rigged.
+
+---
 
 ### Weld Selected ###
 A non-destructive form of remove doubles. In edit-mode, will snap the selected vertices TO the closest unselected one within the Distance.
