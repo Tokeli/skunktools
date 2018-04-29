@@ -164,6 +164,7 @@ class SknkPanel(bpy.types.Panel):
     
     def draw(self, context):
         c = context
+        o = c.object
         sp = bpy.context.scene.SknkProp
         layout = self.layout
         
@@ -220,9 +221,10 @@ class SknkPanel(bpy.types.Panel):
         row.operator("sknk.namefix")
         #################################################################
         #################################################################
-        if avastar_loaded:
-            # True if armature contains an Avastar data prop.
-            o = c.active_object
+        # Explicitly check for AnimProps existence in case Avastar is not
+        # loaded, will cause AttrError.
+        if avastar_loaded and hasattr(o,"AnimProps"):        
+            # Only show if the object has Avastar functionality.
             is_arm = o and o.type=='ARMATURE' and "avastar" in o
             
             layout.separator()
@@ -317,7 +319,6 @@ class SknkPanel(bpy.types.Panel):
                     subcol.label(text="$lin=loop in")
                     subcol.label(text="$lout=loop out")
                     
-
 def render_switch_to_shape_key(self, context):
     layout = self.layout
     row = layout.row()
@@ -695,7 +696,7 @@ class ExportModdedAnimOperator(bpy.types.Operator):
     @classmethod
     def poll(cls, context):
         o = context.object
-        if not o:
+        if not o or not hasattr(o,"AnimProps"):
             return False
         if o.type == 'ARMATURE' and o.AnimProps.selected_actions:
             return False # In Bulk Export mode, might cause black hole.
