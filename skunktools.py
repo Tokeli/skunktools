@@ -65,13 +65,7 @@ def act_on_verts_by_dist(obj, delta, function, source=None, **kwargs):
 put_on_layers = lambda x: tuple((i in x) for i in range(20))
 
 def get_layer(obj):
-    layer = 0
-    for i in range(20):
-        if obj.layers[i] is True:
-            layer = i
-            break
-    return layer
-    
+    return next((x for x, i in enumerate(obj.layers) if i == True), 0)
 # Based off code by Przemysław Bągard, heavily tweaked.
 # https://github.com/przemir/apply_mod_on_shapekey_objs
 def apply_mod_on_shapekey_objs(c, modifier_name):
