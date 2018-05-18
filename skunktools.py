@@ -232,7 +232,7 @@ class SknkPanel(bpy.types.Panel):
             col = box.column(align=True)
             col.label(text="Fancy Avastar Exporter", icon='POSE_DATA')
             col.operator("sknk.export_inc_anim", icon='REC')
-            col.operator("sknk.export_anim_frames", icon='KEYTYPE_KEYFRAME_VEC')
+            col.operator("sknk.export_anim_frames", icon='SPACE2')
             if o.AnimProps.selected_actions:
                 # In bulk mode, panic!!
                 col.label(text="Exporter is in Bulk Export mode!", icon='ERROR')
