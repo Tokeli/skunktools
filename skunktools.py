@@ -674,8 +674,8 @@ class ExportModdedAnimOperator(bpy.types.Operator):
         sk_props = action.SknkAnimProp
         
         mapping = {
-            "$act": action.name,
             "$action": action.name,
+            "$act": action.name,
             "$p": av_props.Priority,
             "$sf": av_props.frame_start,
             "$ef": av_props.frame_end,
