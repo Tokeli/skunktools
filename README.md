@@ -1,5 +1,6 @@
 # skunktools
 A Blender addon with a tiny collection of useful features, mainly for aiding SecondLife content creation. Slowly adding new stuff.
+Confirmed working with Blender 2.77+ and Avastar 2.1.0+, but may work with earlier versions.
 
 Don't know what I'm doing so it's a mess. 8)
 ## Installation ##
