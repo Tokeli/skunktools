@@ -1,34 +1,28 @@
-import os, bpy, bmesh, uuid, string, re
+import os, bpy, bmesh, uuid, string, re, time, mathutils
+from . ago import human
 
 avastar_loaded = False
-try:
-    import avastar
-    avastar_loaded = True
-except ImportError:
-    print("Avastar not loaded, some SkunkTools functions not enabled.")
-    
-bl_info = {
-     "name": "Skunk Tools",
-     "author": "Tokeli Zabelin",
-     "version": (2, 2),
-     "blender": (2, 7, 9),
-     "location": "3D VIEW > Left Toolbar > Tools",
-     "description": "A small collection of tools for SL creation.",
-     "wiki_url": "",
-     "tracker_url": "https://github.com/Tokeli/skunktools/issues",
-     "category": "Object"}
-  
-def merge_vert_locs(vertex, vertex2, bm, reverse=False):
+
+def merge_vert_locs(vertex, vertex2, bm, source=None, reverse=False):
     if reverse:
         vertex, vertex2 = vertex2, vertex        
-    vertex2.co = vertex.co
+    #vertex2.co = vertex.co
+    vertex.co = vertex2.co
+
+# Vertex on target, vertex2 on source.
+def merge_vert_weights(vertex, vertex2, bm, source=None, reverse=False):
+    target_deform = bm.verts.layers.deform.active
+    if source is not None:
+        src_deform = source.verts.layers.deform.active
+    else:
+        src_deform = target_deform
     
-def merge_vert_weights(vertex, vertex2, bm, reverse=False):
-    deform = bm.verts.layers.deform.active
     if reverse:
-        vertex, vertex2 = vertex2, vertex
-    vertex2[deform].clear()
-    vertex2[deform] = vertex[deform]
+        vertex2[src_deform].clear()
+        vertex2[src_deform] = vertex[target_deform]
+    else:
+        vertex[target_deform].clear()
+        vertex[target_deform] = vertex2[src_deform]
 
 def get_closest_vert(target, verts, delta=0.001):
     last_distance = delta + 1.0
@@ -42,10 +36,25 @@ def get_closest_vert(target, verts, delta=0.001):
     
 # Function will take each vertice and its match, one at a time.
 def act_on_verts_by_dist(obj, delta, function, source=None, **kwargs):
-    # Source = same obj if None
+    l_source = mathutils.Vector((0, 0, 0))
+    o_source = mathutils.Vector((0, 0, 0))
+    if source:
+        l_source = source.location.copy()
+        o_source = obj.location.copy()
+        bpy.ops.object.mode_set(mode='OBJECT')   
+        # Set the source and obj origin to 0.
+        l_source = source.location.copy()
+        o_source = obj.location.copy()
+        source.data.transform(mathutils.Matrix.Translation(+l_source))
+        source.matrix_world.translation -= l_source
+        obj.data.transform(mathutils.Matrix.Translation(+o_source))
+        obj.matrix_world.translation -= o_source  
+        bpy.ops.object.mode_set(mode='EDIT')
+    
+    success = 0
     bm = bmesh.from_edit_mesh(obj.data)
     bm.verts.ensure_lookup_table()
-    
+    source_bm = None
     target_verts = [v for v in bm.verts if v.select]
     if source is None:
         source_verts = [v for v in bm.verts if not v.select]
@@ -57,9 +66,26 @@ def act_on_verts_by_dist(obj, delta, function, source=None, **kwargs):
     for target in target_verts:
         closest_vert = get_closest_vert(target, source_verts, delta)
         if closest_vert:
-                function(target, closest_vert, bm, **kwargs)
-                
+                function(target, closest_vert, bm, source_bm, **kwargs)
+                success += 1
+    print("Targeted {} verts to {} verts, {} found".format(len(target_verts), len(source_verts), success))
     bmesh.update_edit_mesh(obj.data)
+    bm.free()
+    if source_bm:
+        source_bm.free()
+        
+    # Force freeing of free'd bmesh to prevent crash
+    bpy.ops.object.mode_set(mode='OBJECT')    
+    bpy.ops.object.mode_set(mode='EDIT')
+
+    if source:
+        #Put the sources back.
+        bpy.ops.object.mode_set(mode='OBJECT')
+        source.data.transform(mathutils.Matrix.Translation(-l_source))
+        source.matrix_world.translation += l_source
+        obj.data.transform(mathutils.Matrix.Translation(-o_source))
+        obj.matrix_world.translation += o_source 
+        bpy.ops.object.mode_set(mode='EDIT')
 
 # Mini-function!
 put_on_layers = lambda x: tuple((i in x) for i in range(20))
@@ -68,36 +94,60 @@ def get_layer(obj):
     return next((x for x, i in enumerate(obj.layers) if i == True), 0)
 # Based off code by Przemysław Bągard, heavily tweaked.
 # https://github.com/przemir/apply_mod_on_shapekey_objs
-def apply_mod_on_shapekey_objs(c, modifier_name):
-    obj = c.active_object
+
+class Key():
+    def __init__(self, key):
+        self.name = key.name
+        self.interpolation = key.interpolation
+        self.mute = key.mute
+        self.slider_min = key.slider_min
+        self.slider_max = key.slider_max
+        self.value = key.value
+    
+
+
+def apply_mod_on_shapekey_objs(obj, modifier_name):
+    c = bpy.context
     mesh = obj.data
     backup_mesh = mesh.copy()
-    shapes = []
-    objs = [obj]
+    shapes = {}
+    objs = []
     # Ensure the object has shape keys.
     if mesh.shape_keys:
-        shapes = [o for o in mesh.shape_keys.key_blocks]
+        for s in mesh.shape_keys.key_blocks:
+            if s.name != "Basis":
+                shapes.update({s.name: Key(s)})
     else:
         bpy.ops.object.modifier_apply(apply_as='DATA', modifier=modifier_name)
+        print("No keys!")
         return
         
     # Duplicate obj for each shape key.
-    for i, shape in enumerate(shapes[1:]):
+    # Go thru and set only the correct shape to active
+    # Then remove all other shapes, then remove THAT shape as the basis
+    # Leaving a clean mesh to apply that one modifier to.
+    
+    for name in shapes:
+        print("Running {}".format(name))
         new_obj = obj.copy()
-        new_obj.data = mesh.copy()
-        new_obj.animation_data_clear() # ???
+        new_obj.name = name
+        new_obj.data = obj.data.copy()
         c.scene.objects.link(new_obj)
         objs.append(new_obj)
         c.scene.objects.active = new_obj
+        blocks = new_obj.data.shape_keys.key_blocks
+        for s in new_obj.data.shape_keys.key_blocks:
+            if s.name == name:
+                s.value = s.slider_max
+            else:
+                s.value = 0
+        mix_name = new_obj.active_shape_key.name + "_applied"
+        new_obj.shape_key_add(name=mix_name, from_mix=True)
         
-        # Reverse the list and then delete the shapekeys from the bottom up.
-        for x in range(0, len(shapes))[::-1]:
-            new_obj.active_shape_key_index = x
-            if new_obj.active_shape_key.name != shape.name:
-                bpy.ops.object.shape_key_remove()
-        # Delete the basis key on our new one.
-        new_obj.active_shape_key_index = 0
-        bpy.ops.object.shape_key_remove()
+        for num, block in enumerate(new_obj.data.shape_keys.key_blocks):
+                if block.name != mix_name:
+                    new_obj.shape_key_remove(block)
+        new_obj.shape_key_remove(new_obj.data.shape_keys.key_blocks[mix_name])
         bpy.ops.object.modifier_apply(apply_as='DATA', modifier=modifier_name)
         
     # Deselect all objects to join the shapes one-by-one.
@@ -113,7 +163,12 @@ def apply_mod_on_shapekey_objs(c, modifier_name):
     bpy.ops.object.shape_key_add(from_mix=False)
     
     # Join each shape to the base object, from top down.
-    for i, o in enumerate(objs[1:]):
+    keys = mesh.shape_keys.key_blocks
+    print("-"*90)
+    print("--- Running: "+obj.name+" "*50)
+    print("-"*90)
+    for o in objs:
+        print("Joining: {}...".format(o.name))
         o.select = True
         try:
             bpy.ops.object.join_shapes()
@@ -121,20 +176,34 @@ def apply_mod_on_shapekey_objs(c, modifier_name):
             # Hopefully this will catch vertice mismatches
             # and revert the mesh data.
             print("Could not join shapes, cancelling!")
-            bpy.data.objects.remove(o, True)
+            for oo in objs:
+                bpy.data.objects.remove(oo, True)
             obj.data = backup_mesh
             
             return {"CANCELLED"}
-            
+        print("Shape keys now:")
+        print([o.name for o in obj.data.shape_keys.key_blocks])
+        s = shapes[o.name]
+        #obj.shape_key_add(s.name)
+        k = obj.data.shape_keys.key_blocks[o.name]
+        k.interpolation = s.interpolation
+        k.mute = s.mute
+        k.slider_min = s.slider_min
+        k.slider_max = s.slider_max
+        k.value = s.value
+        print("TO: {} | FROM: {}".format(k, s.name))
+        print("Joined {} - {} / {} <{} | {}> = {} ".format(
+            k.name,
+            k.interpolation,
+            k.mute,
+            k.slider_min,
+            k.slider_max,
+            k.value))
+        #print("{} - {}".format(keys[i+1].vertex_group,shapes[i+1].vertex_group))
+        #if str(shapes[i+1].vertex_group) is not None:
+        #    keys[i+1].vertex_group = str(shapes[i+1].vertex_group)
+        #keys[i+1].vertex_group = shapes[i+1].vertex_group.encode("ascii", "ignore").decode("utf8")
         bpy.data.objects.remove(o, True)
-        keys = mesh.shape_keys.key_blocks
-        keys[i+1].name = shapes[i+1].name
-        keys[i+1].interpolation = shapes[i+1].interpolation
-        keys[i+1].mute = shapes[i+1].mute
-        keys[i+1].slider_min = shapes[i+1].slider_min
-        keys[i+1].slider_max = shapes[i+1].slider_max
-        keys[i+1].value = shapes[i+1].value
-        keys[i+1].vertex_group = shapes[i+1].vertex_group
         
     bpy.data.meshes.remove(backup_mesh)
     c.scene.objects.active = obj
@@ -168,15 +237,21 @@ class SknkPanel(bpy.types.Panel):
         sp = bpy.context.scene.SknkProp
         layout = self.layout
         
-        layout.label(text="SecondLife Faces:")
+        layout.label(text="SecondLife Faces:", icon='FACESEL_HLT')
         row = layout.row(align=True)
         row.operator("sknk.createfaces")
         row.operator("sknk.setfaces")
         row.operator("sknk.assignfaces")
         layout.separator()
         
+        layout.label(text="Physics Triangles:", icon='OUTLINER_DATA_MESH')
+        row = layout.row(align=True)
+        row.operator("sknk.degenerates")
+        layout.label(text="This triangulates your mesh! Use a copy!", icon='ERROR')
+        layout.separator()
+        
         box = layout.box()
-        box.label(text="Shapekeys And Modifiers")
+        box.label(text="Shapekeys And Modifiers:", icon='MODIFIER')
         col = box.column()
         prop = col.operator("sknk.applyshapes")
         prop = col.operator("sknk.applyshapemod")
@@ -192,9 +267,9 @@ class SknkPanel(bpy.types.Panel):
         #################################################################
         box = layout.box()
         col = box.column(align=True)
-        col.label(text="Non-Destructive Remove Doubles")        
+        col.label(text="Non-Destructive Remove Doubles:", icon='SNAP_ON')        
         row = col.row(align=True)
-        row.prop(sp, "isreversed")
+        #row.prop(sp, "isreversed")
         row.prop(sp, "delta")
         op = col.operator("sknk.weldselected")
         op.is_reversed = sp.isreversed
@@ -211,8 +286,10 @@ class SknkPanel(bpy.types.Panel):
         #################################################################
         layout.separator()
         col = layout.column(align=True)
-        col.label(text="Data Matching")
+        col.label(text="Data Matching:", icon='OBJECT_DATAMODE')
         op = col.operator("sknk.shellmatch")
+        row = col.row(align=True)
+        row.prop(sp, "match_delta")
         row = col.row(align=True)
         row.prop(sp, "mainlayer", text="Objects layer")
         row.prop(sp, "physicslayer", text="Physics layer")
@@ -230,7 +307,7 @@ class SknkPanel(bpy.types.Panel):
             layout.separator()
             box = layout.box()
             col = box.column(align=True)
-            col.label(text="Fancy Avastar Exporter", icon='POSE_DATA')
+            col.label(text="Fancy Avastar Exporter:", icon='POSE_DATA')
             col.operator("sknk.export_inc_anim", icon='REC')
             col.operator("sknk.export_anim_frames", icon='SPACE2')
             if o.AnimProps.selected_actions:
@@ -313,12 +390,56 @@ class SknkPanel(bpy.types.Panel):
                     subcol.label(text="$p=priority")
                     subcol.label(text="$fps=fps")
                     subcol.label(text="$frm=frame amount")
+                    subcol.label(text="$fn=frame name")
                     subcol = split.column()
                     subcol.label(text="$ein=ease in")
                     subcol.label(text="$eout=ease out")
                     subcol.label(text="$lin=loop in")
                     subcol.label(text="$lout=loop out")
+                    box.separator()
+                    #
+                    row = box.row()
+                    row.template_list("SknkFrameNamesList", "", sk_props, "frame_names", sk_props, "frame_names_index")
+                    col = row.column()
+                    subcol = col.column(align=True)
+                    subcol.operator("sknk_frame_names.copy", text="", icon = 'COPYDOWN')
+                    subcol.operator("sknk_frame_names.paste", text="", icon = 'PASTEDOWN')
+                    subcol.separator()
+                    subcol.separator()
+                    subcol.operator("sknk_frame_names.create", text="",  icon = 'ZOOMIN').dir = 'THIS'
+                    subcol.operator("sknk_frame_names.create", text="",  icon = 'PLUS').dir = 'NEXT'
+                    subcol.separator()
+                    subcol.operator("sknk_frame_names.delete", text="",  icon = 'ZOOMOUT')
                     
+                    col = box.column()
+                    row = col.row(align=True)
+                    row.alignment = 'RIGHT'
+                    row.operator("screen.keyframe_jump", text="", icon = 'BACK').next = False
+                    row.operator("screen.keyframe_jump", text="", icon = 'FORWARD').next = True
+                    
+                    
+        ####################
+        # Backup list
+        ####################
+        layout.separator()
+        row = layout.row()
+        try:
+            row.label("Mesh Backups:", icon='HELP')
+            row = layout.row()
+            row.template_list("SknkBackupsList", "", o.SknkProp, "backups", o.SknkProp, "index")
+            col = row.column()
+            subcol = col.column(align=True)
+            subcol.operator('sknk_backup.create', text="", icon="ZOOMIN")
+            subcol.operator('sknk_backup.delete', text="", icon="ZOOMOUT")
+            row = layout.row()
+            row.label(o.data.name)
+            row = layout.row()
+            if o.SknkProp.index > 0:
+                row.operator("sknk_backup.apply", text="Apply", icon='SAVE_AS')
+                row = layout.row()
+                row.label(text="Backup is being previewed!", icon='ERROR')
+        except AttributeError:
+            pass
 def render_switch_to_shape_key(self, context):
     layout = self.layout
     row = layout.row()
@@ -328,10 +449,16 @@ def render_switch_to_shape_key(self, context):
 # ############################################################################
 # Actual operators ###########################################################
 # ############################################################################
+
+def get_first_layer(obj):
+    for x in range(20):
+        if obj.layers[x] == True:
+            return x
+    return 0
 class MatchObjectsToShells(bpy.types.Operator):
     bl_idname = ("sknk.shellmatch")
     bl_label = "Match Physics Meshes to Objects"
-    bl_description = "Match objects to their physics shells"
+    bl_description = "Match objects to their physics meshes"
     
     @classmethod
     def poll(cls, context):
@@ -340,38 +467,64 @@ class MatchObjectsToShells(bpy.types.Operator):
     def execute(self, context):
         c = context
         sp = bpy.context.scene.SknkProp
-        main_objects = []
-        physics_objects = []
-        # Run thru and collect our objects.
+        
         for obj in c.selected_objects:
-            if   obj.layers[sp.mainlayer - 1] == True: main_objects.append(obj)
-            elif obj.layers[sp.physicslayer - 1] == True: physics_objects.append(obj)
-
-        # Generate a short UUID each time so we don't get "Object.001" issues
-        # with non-selected objects.
-        prefix = str(uuid.uuid4())[:5]
-        for num, obj in enumerate(main_objects):
-            match = False
-            
-            for needle in physics_objects:        
-                loc_delta = (obj.location - needle.location).length
-                scale_delta = (obj.dimensions - needle.dimensions).length
-                
-                # Floats are fuzzy. Use loc/scale both to guesstimate matching.
-                if loc_delta <= 0.002 and scale_delta <= 0.002:            
-                    # This object matches
-                    needle.name = prefix+"_"+str(num)+"_physics"
-                    needle.data.name = needle.name
-                    match = True
-                    break
-            obj.name = (prefix if match == True else "ORPHAN")+"_"+str(num)+"_object"
-            obj.data.name = obj.name
+            prefix = str(uuid.uuid4())[:8]
+            for target in c.selected_objects:
+                if target is not obj:
+                    # Will be true if they're not on the same layer
+                    target_layer = get_first_layer(target)
+                    obj_layer = get_first_layer(obj)
+                    if target_layer != obj_layer:
+                        loc_delta = (obj.location - target.location).length
+                        scale_delta = (obj.dimensions - target.dimensions).length
+                        if loc_delta <= sp.match_delta and scale_delta <= sp.match_delta:
+                            target.name = "{}_{}".format(prefix, target_layer)
+                            obj.name = "{}_{}".format(prefix, obj_layer)
+                            target.data.name = target.name
+                            obj.data.name = obj.name
+                            target.select = False
+                            obj.select = False
         return {"FINISHED"}
+        
+        # main_objects = []
+        # physics_objects = []
+        # # Run thru and collect our objects.
+        # for obj in c.selected_objects:
+            # if   obj.layers[sp.mainlayer - 1] == True: main_objects.append(obj)
+            # elif obj.layers[sp.physicslayer - 1] == True: physics_objects.append(obj)
+        # print("{} objects and {} physics selected".format(len(main_objects), len(physics_objects)))
+        # # Generate a short UUID each time so we don't get "Object.001" issues
+        # # with non-selected objects.
+        # prefix = str(uuid.uuid4())[:5]
+        # failures = 0
+        # for num, obj in enumerate(main_objects):
+            # match = False
+            
+            # for needle in physics_objects:        
+                # loc_delta = (obj.location - needle.location).length
+                # scale_delta = (obj.dimensions - needle.dimensions).length
+                
+                # # Floats are fuzzy. Use loc/scale both to guesstimate matching.
+                # if loc_delta <= 0.01 and scale_delta <= 0.01:            
+                    # # This object matches
+                    # needle.name = prefix+"_"+str(num)+"_physics"
+                    # needle.data.name = needle.name
+                    # match = True
+                    # needle.select = False
+                    # obj.select = False
+                    # break
+            # obj.name = (prefix if match == True else "ORPHAN")+"_"+str(num)+"_object"
+            # if not match:
+                # failures += 1
+            # obj.data.name = obj.name
+        # print("{} orphans remaining".format(failures))
+        # return {"FINISHED"}
         
 class NameFix(bpy.types.Operator):
     bl_idname = ("sknk.namefix")
-    bl_label = "Match Names"
-    bl_description = "Match datablock name to object name"
+    bl_label = "Match Names to Meshes"
+    bl_description = "Match mesh name to object name"
     
     @classmethod
     def poll(cls, context):
@@ -445,17 +598,17 @@ class WeldSelected(bpy.types.Operator):
     
     def execute(self, context):
         c = context
-        source = None
+        src = None
         if c.scene.SknkProp.selected_obj_to_active:
             for obj in c.selected_objects:
-                if obj is not c.active_object:
-                    source = obj
+                if obj != c.active_object:
+                    src = obj
                     break
         act_on_verts_by_dist(
             c.active_object,
             self.delta,
             merge_vert_locs,
-            source=source,
+            source=src,
             reverse=self.is_reversed)
         return {"FINISHED"}
 
@@ -483,17 +636,17 @@ class TransferWeightsToSelected(bpy.types.Operator):
     
     def execute(self, context):
         c = context
-        source = None
+        src = None
         if c.scene.SknkProp.selected_obj_to_active:
             for obj in c.selected_objects:
-                if obj is not c.active_object:
-                    source = obj
+                if obj != c.active_object:
+                    src = obj
                     break
         act_on_verts_by_dist(
             c.active_object,
             self.delta,
             merge_vert_weights,
-            source=source,
+            source=src,
             reverse=self.is_reversed)
         return {"FINISHED"}
             
@@ -538,7 +691,7 @@ class ApplyShapes(bpy.types.Operator):
     @classmethod
     def poll(cls, context):
         for o in context.selected_objects:
-            if o.type == 'MESH' and o.data.shape_keys:
+            if o.type == 'MESH':
                 return True
         return False
         
@@ -591,6 +744,95 @@ class SetFaces(bpy.types.Operator):
     def execute(self, context):
         set_sl_materials(context)
         return {"FINISHED"}
+
+class FindDegenerates(bpy.types.Operator):
+    bl_idname="sknk.degenerates"
+    bl_label = "Find Degenerate Tris"
+    bl_description = "Find triangles that are invalid for SecondLife physics meshes"
+    
+    @classmethod
+    def poll(cls, context):
+        return context.active_object.type == 'MESH'
+    def execute(self, context):
+        obj = context.active_object
+        bpy.ops.object.mode_set(mode='EDIT')
+        bm = bmesh.from_edit_mesh(obj.data)
+        bm.verts.ensure_lookup_table()
+        minX = min([v.co[0] for v in bm.verts])
+        minY = min([v.co[1] for v in bm.verts])
+        minZ = min([v.co[2] for v in bm.verts])
+
+        vMin = mathutils.Vector((minX, minY, minZ))
+        maxDim = max(obj.dimensions)
+        if maxDim != 0.0:
+            for v in bm.verts:
+                v.co -= vMin
+                v.co /= maxDim
+        else:
+            for v in bm.verts:
+                v.co -= vMin
+
+
+        def tri_less_than_ten(face):
+            e1 = face.edges[0].calc_length()
+            e2 = face.edges[1].calc_length()
+            e3 = face.edges[2].calc_length()
+            a = (e1 <= 10.0 * e2) and (e1 <= 10.0 * e3)
+            b = (e2 <= 10.0 * e1) and (e2 <= 10.0 * e3)
+            c = (e3 <= 10.0 * e1) and (e3 <= 10.0 * e2)
+            if(a and b and c):
+                return True
+            return False
+                
+        for face in bm.faces:
+            tolerance = 0.00000075
+            verts = []
+            vecs = []
+            verts = [v.co for v in face.verts]
+            
+            # Code semi-taken from the SecondLife viewer source in llmodel.cpp
+            edge1 = (verts[0] - verts[1])
+            edge2 = (verts[0] - verts[2])
+            edge3 = (verts[2] - verts[1])
+               
+            # If no edge is 10x longer than any other, weaken the tolerance.
+            #if(a and b and c):
+            if(tri_less_than_ten(face)):
+                #face.select = True
+                tolerance *= 0.0001
+
+            # Don't have the first clue what this does.
+            cross = edge1.cross(edge2)
+            edge1b = (verts[1] - verts[0])
+            edge2b = (verts[1] - verts[2])
+            crossb = edge1b.cross(edge2b)
+            
+            if(cross.dot(cross) < tolerance or crossb.dot(crossb) < tolerance):
+                face.select = True
+            else:
+                face.select = False
+                
+            # Check for zero-size faces.
+            if(face.calc_area() == 0.0):
+                face.select = True
+
+        # Scale it back up.
+        if maxDim != 0.0:
+            for v in bm.verts:
+                v.co *= maxDim
+                v.co += vMin
+        else:
+            for v in bm.verts:
+                v.co += vMin
+
+
+        bmesh.update_edit_mesh(obj.data)
+        bm.free()
+        # Force edit mode back and forth because bmesh bug which will crash blender
+        # because free() does not actually free until edit mode is left.
+        bpy.ops.object.mode_set(mode='OBJECT')
+        bpy.ops.object.mode_set(mode='EDIT')
+        print("==========================")
         
 class SwitchToShapeKey(bpy.types.Operator):
     bl_idname = "sknk.switchshape"
@@ -646,11 +888,11 @@ class ApplyModForShapeKeys(bpy.types.Operator):
  
     def execute(self, context):
     
-        ob = context.scene.objects.active
+        ob = context.active_object
         bpy.ops.object.select_all(action='DESELECT')
         context.scene.objects.active = ob
         context.scene.objects.active.select = True
-        return apply_mod_on_shapekey_objs(context, self.my_enum)
+        return apply_mod_on_shapekey_objs(ob, self.my_enum)
         
  
     def invoke(self, context, event):
@@ -665,6 +907,13 @@ class ExportModdedAnimOperator(bpy.types.Operator):
     bl_idname = "sknk.export_modded_anim"
     bl_label = "Export Modified Animation"
     
+    def get_frame_name(av_props, frame_names):
+        try:
+            matches = [o.name for o in frame_names if o.frame == av_props.frame_start]
+            return matches[0]
+        except Exception:
+            return ""
+            
     def custom_name(action):
         # This uses our custom naming instead of Avastar's
         # Which has less substitutions.
@@ -685,7 +934,8 @@ class ExportModdedAnimOperator(bpy.types.Operator):
             "$ein": av_props.Ease_In,
             "$eout": av_props.Ease_Out,
             "$lin": av_props.Loop_In,
-            "$lout": av_props.Loop_Out}
+            "$lout": av_props.Loop_Out,
+            "$fn": ExportModdedAnimOperator.get_frame_name(av_props, sk_props.frame_names)}
             
         pre_name = sk_props.custom_name
         if pre_name == "":
@@ -809,6 +1059,265 @@ class ExportAnimByFrames(ExportModdedAnimOperator):
         av_props.frame_start = start
         av_props.frame_end = end
         return {'FINISHED'}
+        
+# #####################################################################
+# Action Frame Name List ##############################################
+
+def frame_names_index_changed(self, context):
+    o = context.object
+    prop = o.animation_data.action.SknkAnimProp
+    context.scene.frame_set(prop.frame_names[prop.frame_names_index].frame)
+    
+class FrameNameItem(bpy.types.PropertyGroup):
+    frame = bpy.props.IntProperty()
+    name = bpy.props.StringProperty()
+
+class CopyFrameNames(bpy.types.Operator):
+    bl_idname = "sknk_frame_names.copy"
+    bl_label = "Copy FrameNames"
+    
+    @classmethod
+    def poll(self, context):
+        o = context.active_object
+        return o is not None \
+            and o.animation_data is not None
+    
+    def execute(self, c):
+        o = c.object
+        c.scene.SknkProp.frame_name_copy_from = c.object.animation_data.action.name
+        return{'FINISHED'}
+        
+class PasteFrameNames(bpy.types.Operator):
+    bl_idname = "sknk_frame_names.paste"
+    bl_label = "Paste FrameNames"
+    
+    @classmethod
+    def poll(self, c):
+        o = c.active_object
+        return o is not None \
+            and o.animation_data is not None \
+            and c.scene.SknkProp.frame_name_copy_from is not None
+    
+    def execute(self, c):
+        o = c.object
+        source = c.scene.SknkProp.frame_name_copy_from
+        source_act = bpy.data.actions[source]
+        s_prop = source_act.SknkAnimProp
+        t_prop = c.object.animation_data.action.SknkAnimProp
+        
+        while len(t_prop.frame_names):
+            t_prop.frame_names.remove(len(t_prop.frame_names) - 1)
+            
+        i = 0
+        for o in range(len(s_prop.frame_names)):
+            fn = t_prop.frame_names.add()
+            fn.frame = s_prop.frame_names[o].frame
+            fn.name = s_prop.frame_names[o].name
+        return{'FINISHED'}
+            
+class SknkFrameNamesList(bpy.types.UIList):
+    def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
+
+        # We could write some code to decide which icon to use here...
+        custom_icon = 'TEXT'
+
+        # Make sure your code supports all 3 layout types
+        if self.layout_type in {'DEFAULT', 'COMPACT'}:
+            row = layout.row()
+            split = row.split(percentage=0.3)
+            
+            split.prop(item, "frame", text="", emboss=False)
+            split.prop(item, "name", text="", emboss=True)
+            
+        elif self.layout_type in {'GRID'}:
+            layout.alignment = 'CENTER'
+            layout.label("", icon = custom_icon)
+
+
+class AddFrameName(bpy.types.Operator):
+    bl_idname = "sknk_frame_names.create"
+    bl_label = "Create FrameName"
+    
+    dir = bpy.props.EnumProperty(
+                items=(
+                    ('THIS', 'This', ""),
+                    ('NEXT', 'Next', ""),))
+    @classmethod
+    def poll(self, context):
+        o = context.active_object
+        return o is not None \
+            and o.animation_data is not None
+    
+    def execute(self, c):
+        o = c.object
+        p = o.animation_data.action.SknkAnimProp
+        c_f = c.scene.frame_current
+        
+        if self.dir == 'NEXT':
+            c_f += 1
+            
+        matches = [f for f in p.frame_names if f.frame == c_f]
+        if matches == []:
+            # Clear to add one, keep going down
+            # until we find a frame lower than us.
+            try:
+                i = p.frame_names_index
+                
+                p.frame_names_index = 0
+                while p.frame_names[p.frame_names_index].frame <= c_f:
+                    p.frame_names_index += 1
+            except Exception:
+                pass
+            new_frame_name = p.frame_names.add()
+            new_frame_name.frame = c_f
+            new_frame_name.name = "Unnamed"
+            p.frame_names.move(len(p.frame_names) - 1, p.frame_names_index)
+        c.scene.frame_set(c_f)
+        return{'FINISHED'}
+        
+class RemoveFrameName(bpy.types.Operator):
+    bl_idname = "sknk_frame_names.delete"
+    bl_label = "Delete FrameName"
+    
+    @classmethod
+    def poll(self, context):
+        o = context.active_object
+        return o is not None \
+            and o.animation_data is not None
+            
+    def execute(self, c):
+        prop = c.object.SknkProp
+        meshes = bpy.data.meshes
+        
+        o = c.object
+        p = o.animation_data.action.SknkAnimProp
+        p.frame_names.remove(p.frame_names_index)
+        if p.frame_names_index >= len(p.frame_names):
+            p.frame_names_index -= 1
+        return{'FINISHED'}            
+# #####################################################################
+# Backup Things #######################################################
+
+def backup_index_changed(self, context):
+    o = context.object
+    prop = o.SknkProp
+    
+    if prop.index < 0:
+        prop.index = 0
+        
+    o.data = bpy.data.meshes[prop.backups[prop.index].name]
+    
+class BackupItem(bpy.types.PropertyGroup):
+    time = bpy.props.IntProperty()
+    name = bpy.props.StringProperty()
+    
+class SknkBackupsList(bpy.types.UIList):
+    def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
+
+        # We could write some code to decide which icon to use here...
+        custom_icon = 'OBJECT_DATAMODE'
+
+        # Make sure your code supports all 3 layout types
+        if self.layout_type in {'DEFAULT', 'COMPACT'}:
+            row = layout.row()
+            d = bpy.data.meshes[item.name]
+            if index == 0:
+                name = "Basis"
+            else:
+                name = human(item.time, abbreviate=True)
+            row.label(name)
+            row.label(str(len(d.vertices))+"V")
+            row.label(str(len(d.materials))+"M")
+            row.label(str(len(d.uv_layers))+"UV")
+            if d.shape_keys is not None:
+                row.label(str(len(d.shape_keys.key_blocks))+"SH")
+            else:
+                row.label("0SH")
+            
+        elif self.layout_type in {'GRID'}:
+            layout.alignment = 'CENTER'
+            layout.label("", icon = custom_icon)
+
+class CreateBackup(bpy.types.Operator):
+    bl_idname = "sknk_backup.create"
+    bl_label = "Create backup"
+    
+    @classmethod
+    def poll(self, context):
+        o = context.active_object
+        return o is not None \
+            and o.data is not None
+    
+    def execute(self, c):
+        o = c.object
+        p = o.SknkProp
+        # If this is the first, store it as the original.
+        if len(p.backups) == 0:
+            #p.original = o.data.name
+            new_backup = o.SknkProp.backups.add()
+            new_backup.time = int(time.time())
+            new_backup.name = o.data.name
+        else:
+            data_copy = o.data.copy()
+            data_copy.use_fake_user = True
+            data_copy.name = str(uuid.uuid4())[:12] + "_BACKUP"
+            new_backup = o.SknkProp.backups.add()
+            new_backup.time = int(time.time())
+            new_backup.name = data_copy.name
+        return{'FINISHED'}
+        
+class ApplyBackup(bpy.types.Operator):
+    bl_idname = "sknk_backup.apply"
+    bl_label = "Apply backup"
+    
+    @classmethod
+    def poll(self, context):
+        o = context.active_object
+        return o is not None \
+            and o.data is not None \
+            and len(o.SknkProp.backups) \
+            and o.SknkProp.previewing
+            
+    def execute(self, c):
+        o = c.object
+        prop = o.SknkProp
+        meshes = bpy.data.meshes
+        
+        try:
+            old_index = prop.index
+            old_mesh = meshes[prop.backups[0].name]
+            prop.backups.remove(old_index)
+            prop.current = -1
+            prop.index = 0
+            meshes.remove(meshes[old_mesh])
+        except:
+            return {'CANCELLED'}
+        return {'FINISHED'}
+   
+class DeleteBackup(bpy.types.Operator):
+    bl_idname = "sknk_backup.delete"
+    bl_label = "Delete backup"
+    
+    @classmethod
+    def poll(self, context):
+        o = context.active_object
+        return o is not None \
+            and o.data is not None \
+            and len(o.SknkProp.backups)
+            
+    def execute(self, c):
+        prop = c.object.SknkProp
+        meshes = bpy.data.meshes
+        
+        # If we are previewing the backup, remove and reset to original.
+        old_index = prop.index
+        old_mesh = prop.backups[old_index].name
+        prop.backups.remove(old_index)
+        prop.index -= 1
+        # Don't delete the actual mesh!!
+        if prop.index > 0:
+            meshes.remove(meshes[old_mesh])
+        return{'FINISHED'}
 # #####################################################################
 # Cleanup and startup #################################################
 
@@ -826,6 +1335,13 @@ class SknkProp(bpy.types.PropertyGroup):
         min=1,
         max=20,
         description=("Layer of physics shells"))
+    match_delta =  bpy.props.FloatProperty(
+        name=("Match Distance"),
+        default=0.015,
+        min=0.001,
+        precision=3,
+        step=1,
+        description=("Max distance between matching objects"))
         
     isreversed = bpy.props.BoolProperty(
         name=("Selected Verts to Unselected"),
@@ -833,7 +1349,7 @@ class SknkProp(bpy.types.PropertyGroup):
         description=("If unchecked, will make unselected verts move to selected instead"))
         
     selected_obj_to_active = bpy.props.BoolProperty(
-        name=("Selected Obj to Active"),
+        name=("Snap Active to Selected"),
         default=False,
         description=("Snap vertices from active object, to selected object, instead of vertices on same mesh"))
         
@@ -855,6 +1371,24 @@ class SknkProp(bpy.types.PropertyGroup):
         step=1,
         description=("Max distance between matching verts"))
         
+    frame_name_copy_from = bpy.props.StringProperty(
+        name=("FrameNames From"),
+        description=("Action to copy FrameNames from"))
+        
+class SknkObjProp(bpy.types.PropertyGroup):
+    backups = bpy.props.CollectionProperty(type = BackupItem)
+    previewing = bpy.props.BoolProperty(
+        name = ("Previewing backup"),
+        default=False)
+    current = bpy.props.IntProperty(
+        name = ("Current backup"),
+        default = -1)
+    index = bpy.props.IntProperty(
+        name = ("Current index on list"),
+        default = 0,
+        update = backup_index_changed)
+    original = bpy.props.StringProperty()
+    
 class SknkAnimProp(bpy.types.PropertyGroup):
     """
     how many to increment FPS each time
@@ -889,20 +1423,23 @@ class SknkAnimProp(bpy.types.PropertyGroup):
         default=False,
         description=("Use custom name instead of Avastar one"))
     custom_name = bpy.props.StringProperty()
-                
-                
+    frame_names = bpy.props.CollectionProperty(type = FrameNameItem)
+    frame_names_index = bpy.props.IntProperty(
+        name = ("Current index on list"),
+        default = 0,
+        update = frame_names_index_changed)
+
 def register():  
-    bpy.utils.register_module(__name__)
     bpy.types.DATA_PT_shape_keys.remove(render_switch_to_shape_key)
     bpy.types.DATA_PT_shape_keys.prepend(render_switch_to_shape_key)
     bpy.types.Action.SknkAnimProp = bpy.props.PointerProperty(type = SknkAnimProp)
+    bpy.types.Object.SknkProp = bpy.props.PointerProperty(type = SknkObjProp)
     bpy.types.Scene.SknkProp = bpy.props.PointerProperty(type = SknkProp)
+    print("Registering inner module!!!!")
     
 def unregister():
     bpy.types.DATA_PT_shape_keys.remove(render_switch_to_shape_key)
-    bpy.utils.unregister_module(__name__)
     del bpy.types.Action.SknkAnimProp
     del bpy.types.Scene.SknkProp
+    del bpy.types.Object.SknkProp
     
-if __name__ == "__main__":  
-    register()  

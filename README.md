@@ -21,6 +21,25 @@ This adds the 8 Face materials to all selected objects, removing any materials t
 If you have added a texture to a face on the mesh using the UV/Image Editor, this will assign a Face material to it. Allows you to quickly prepare meshes that might have a complicated texture setup.
 
 This requires you to be in Blender Render mode (top of the screen), and enable Textured Solid under Shading in the right 3D sidebar.
+---
+### Find Degenerate Tris ###
+Specifically for SecondLife, this tries to identify triangles that will prevent your physics mesh from uploading. This requires your object being triangulated, so make a copy and CTRL+T it in edit mode.
+
+Code ported from llfloatermodelpreview.cpp and llmodel.cpp of the Firestorm viewer, but I don't have a clue what I'm doing so it's not a 100% match, but will show a good enough idea.
+---
+
+### Apply Shapekeys ###
+This will simply remove all shapekeys from selected objects, preserving how they currently look.
+
+### Apply non-Armature Modifiers ###
+This will apply all modifiers on selected objects that aren't an Armature, so they stay rigged.
+
+---
+
+### Non-Destructive Remove Doubles ###
+Snaps selected vertices to unselected ones nearby, without removing them. If 'Snap Active to Selected' is on, selected vertices will snap to vertices on one other selected object, and not the same mesh.
+
+The 'weights to selected' function will do the same, except copy weights from the closest unselected vertices.
 
 ---
 
@@ -41,17 +60,3 @@ For all selected objects, the name of the object is assigned to the mesh data as
 An advanced version of the above. For all selected objects, it will look on the set Physics Layer for a selected object in the same position. If one is found, they're both given a randomly-generated name and assigned the suffix "`_object`" and "`_physics`". Non-matching items will be named ORPHAN.
 
 ---
-
-### Apply Shapekeys ###
-This will simply remove all shapekeys from selected objects, preserving how they currently look.
-
-### Apply non-Armature Modifiers ###
-This will apply all modifiers on selected objects that aren't an Armature, so they stay rigged.
-
----
-
-### Weld Selected ###
-A non-destructive form of remove doubles. In edit-mode, will snap the selected vertices TO the closest unselected one within the Distance.
-
-### Weights to Selected ###
-Remove-doubles but for vertex groups. In edit-mode, will transfer all vertex groups from the closest unselected vert, to the closest selected one, within distance.
