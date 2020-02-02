@@ -3,14 +3,20 @@ A Blender addon with a tiny collection of useful features, mainly for aiding Sec
 Confirmed working with Blender 2.77+ and Avastar 2.1.0+, but may work with earlier versions.
 
 Don't know what I'm doing so it's a mess. 8)
+
+---
+
 ## Installation ##
-Download the single file and install it from the Addons section of Blender's preferences, like any other.
+Click the green button in the upper right that says 'Clone or Download', then 'Download Zip'.
+
+In Blender, File -> Preferences -> Addons -> Install From File, and select the zip-file. Do not unzip it!
+
+---
 ## Location ##
 Most tools are in a new panel in the Tools tab in the 3D View sidebar. (Hit T in 3D view).
-## Changes ##
-### Switch to selected Shape ###
-Adds a button to the Shape Keys panel. Will set all shape values to 0 and set the selected to 1. 
-## Tools ##
+
+---
+
 ### Create Faces ###
 Adds 8 materials to the file, named 'Face 0' through 'Face 7', and color-coded. This is for the 8-material limit of SL objects.
 
