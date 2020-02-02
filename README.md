@@ -21,11 +21,14 @@ This adds the 8 Face materials to all selected objects, removing any materials t
 If you have added a texture to a face on the mesh using the UV/Image Editor, this will assign a Face material to it. Allows you to quickly prepare meshes that might have a complicated texture setup.
 
 This requires you to be in Blender Render mode (top of the screen), and enable Textured Solid under Shading in the right 3D sidebar.
+
 ---
+
 ### Find Degenerate Tris ###
 Specifically for SecondLife, this tries to identify triangles that will prevent your physics mesh from uploading. This requires your object being triangulated, so make a copy and CTRL+T it in edit mode.
 
 Code ported from llfloatermodelpreview.cpp and llmodel.cpp of the Firestorm viewer, but I don't have a clue what I'm doing so it's not a 100% match, but will show a good enough idea.
+
 ---
 
 ### Apply Shapekeys ###
