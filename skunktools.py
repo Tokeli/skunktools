@@ -529,7 +529,7 @@ class NameFix(bpy.types.Operator):
     @classmethod
     def poll(cls, context):
         for o in context.selected_objects:
-            if o is not None:
+            if o is not None and o.type == 'MESH':
                 if o.select and (o.name != o.data.name):
                     return True
         return False
