@@ -752,7 +752,9 @@ class FindDegenerates(bpy.types.Operator):
     
     @classmethod
     def poll(cls, context):
-        return context.active_object.type == 'MESH'
+        o = context.active_object
+        return o != None and o.type == 'MESH'
+        
     def execute(self, context):
         obj = context.active_object
         bpy.ops.object.mode_set(mode='EDIT')
