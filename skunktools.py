@@ -529,8 +529,9 @@ class NameFix(bpy.types.Operator):
     @classmethod
     def poll(cls, context):
         for o in context.selected_objects:
-            if o and o.select and (o.name != o.data.name):
-                return True
+            if o is not None:
+                if o.select and (o.name != o.data.name):
+                    return True
         return False
         
     def execute(self, context):
@@ -753,7 +754,9 @@ class FindDegenerates(bpy.types.Operator):
     @classmethod
     def poll(cls, context):
         o = context.active_object
-        return o != None and o.type == 'MESH'
+        if o is None:
+            return False
+        return o.type == 'MESH'
         
     def execute(self, context):
         obj = context.active_object
