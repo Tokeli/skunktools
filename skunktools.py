@@ -837,7 +837,7 @@ class FindDegenerates(bpy.types.Operator):
         # because free() does not actually free until edit mode is left.
         bpy.ops.object.mode_set(mode='OBJECT')
         bpy.ops.object.mode_set(mode='EDIT')
-        print("==========================")
+        return {"FINISHED"}
         
 class SwitchToShapeKey(bpy.types.Operator):
     bl_idname = "sknk.switchshape"
