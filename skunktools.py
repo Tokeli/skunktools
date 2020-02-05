@@ -579,19 +579,14 @@ class PasteTransforms(bpy.types.Operator):
             print(vec)
             print(rot)
         except ValueError:
-            print("Error")
             self.report({'ERROR'}, "Non-number detected, cancelled")
             return {'CANCELLED'}
         else:
-            print("Type: {}".format(type))
             if self.type == 'SCALE':
-                print("Scale")
                 obj.dimensions = vec
             elif self.type == 'ROT':
-                print("rot")
                 obj.rotation_euler = rot
             elif self.type == 'POS':
-                print("loc")
                 obj.location = vec
         return {"FINISHED"}
         
