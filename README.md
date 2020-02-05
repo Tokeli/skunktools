@@ -37,6 +37,15 @@ Code ported from llfloatermodelpreview.cpp and llmodel.cpp of the Firestorm view
 
 ---
 
+### Paste Transforms ###
+In some SecondLife viewers is a copy function in the build panel, to copy pos/loc/rot in a <1, 1, 1> format.
+
+This panel lets you easily copy/paste these from SecondLife to Blender objects.
+
+Due to limitations, you may have to flip into edit mode to make the panel update your clipboard.
+
+---
+
 ### Apply Shapekeys ###
 This will simply remove all shapekeys from selected objects, preserving how they currently look.
 
