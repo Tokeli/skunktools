@@ -1,4 +1,4 @@
-import os, bpy, bmesh, uuid, string, re, time, mathutils
+import os, bpy, bmesh, uuid, string, re, time, mathutils, math
 from . ago import human
 
 avastar_loaded = False
@@ -249,6 +249,14 @@ class SknkPanel(bpy.types.Panel):
         row.operator("sknk.degenerates")
         layout.label(text="This triangulates your mesh! Use a copy!", icon='ERROR')
         layout.separator()
+        
+        layout.label(text="Paste Transforms:")
+        col = layout.column(align=True)
+        op = col.operator("sknk.paste_transforms", text="Position (meters)").type = 'POS'
+        op = col.operator("sknk.paste_transforms", text="Size (meters)").type = 'SCALE'
+        op = col.operator("sknk.paste_transforms", text="Rotation (degrees)").type = 'ROT'
+        layout.separator()
+        
         
         box = layout.box()
         box.label(text="Shapekeys And Modifiers:", icon='MODIFIER')
@@ -539,7 +547,56 @@ class NameFix(bpy.types.Operator):
         for obj in c.selected_objects:
             obj.data.name = obj.name
         return {"FINISHED"}
+
+
+
+class PasteTransforms(bpy.types.Operator):
+    bl_idname = "sknk.paste_transforms"
+    bl_label = "Paste Transforms"
+    bl_options = {"REGISTER", "UNDO"}
     
+    type = bpy.props.StringProperty(default = "")
+    # type = bpy.props.EnumProperty(
+                # items=(
+                    # ('ROT', 'rotation', 'r', ""),
+                    # ('SCALE', 'size', 's', ""),
+                    # ('POS', 'position', 'p', "")))
+                    
+    @classmethod
+    def poll(cls, context):
+        o = context.active_object
+        clip = context.window_manager.clipboard
+        return (o is not None and o.type == 'MESH' and clip.startswith("<"))
+        
+    def execute(self, context):
+        c = context
+        obj = c.active_object
+        clip = c.window_manager.clipboard
+        args = clip.replace("<","").replace(">","").replace(" ","").split(",")
+        try:
+            vec = mathutils.Vector( (float(x) for x in args) )
+            rot = mathutils.Euler( (math.radians(float(x)) for x in args), 'XYZ' )
+            print(vec)
+            print(rot)
+        except ValueError:
+            print("Error")
+            self.report({'ERROR'}, "Non-number detected, cancelled")
+            return {'CANCELLED'}
+        else:
+            print("Type: {}".format(type))
+            if self.type == 'SCALE':
+                print("Scale")
+                obj.dimensions = vec
+            elif self.type == 'ROT':
+                print("rot")
+                obj.rotation_euler = rot
+            elif self.type == 'POS':
+                print("loc")
+                obj.location = vec
+        return {"FINISHED"}
+        
+
+
 class ApplyMods(bpy.types.Operator):
     bl_idname = ("sknk.applymods")
     bl_label = "Apply non-Armature Modifiers"
@@ -745,6 +802,8 @@ class SetFaces(bpy.types.Operator):
     def execute(self, context):
         set_sl_materials(context)
         return {"FINISHED"}
+
+
 
 class FindDegenerates(bpy.types.Operator):
     bl_idname="sknk.degenerates"
