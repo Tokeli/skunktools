@@ -236,20 +236,23 @@ class SknkPanel(bpy.types.Panel):
         o = c.object
         sp = bpy.context.scene.SknkProp
         layout = self.layout
-        
+        #################################################################
+        #################################################################
         box = layout.box()
         box.label(text="SecondLife Faces:", icon='FACESEL_HLT')
         row = box.row(align=True)
         row.operator("sknk.createfaces")
         row.operator("sknk.setfaces")
         row.operator("sknk.assignfaces")
-        
+        #################################################################
+        #################################################################
         box = layout.box()
         box.label(text="Physics Triangles:", icon='OUTLINER_DATA_MESH')
         row = box.row(align=True)
         row.operator("sknk.degenerates")
         box.label(text="This triangulates your mesh! Use a copy!", icon='ERROR')
-        
+        #################################################################
+        #################################################################
         box = layout.box()
         col = box.column(align=True)
         row = col.row(align=True)
@@ -264,7 +267,8 @@ class SknkPanel(bpy.types.Panel):
         row = col.row(align=True)
         op = row.operator("sknk.copy_transforms", text="Rotation").type = 'ROT'
         op = row.operator("sknk.paste_transforms", text="Rotation").type = 'ROT'
-        
+        #################################################################
+        #################################################################
         box = layout.box()
         box.label(text="Shapekeys And Modifiers:", icon='MODIFIER')
         col = box.column()
@@ -275,9 +279,7 @@ class SknkPanel(bpy.types.Panel):
         row.prop(sp, "apply_copy")
         sub = row.row()
         sub.prop(sp, "apply_copy_layer")
-        sub.enabled = sp.apply_copy
-        layout.separator()
-        
+        sub.enabled = sp.apply_copy     
         #################################################################
         #################################################################
         box = layout.box()
@@ -848,6 +850,7 @@ class FindDegenerates(bpy.types.Operator):
         obj = context.active_object
         bpy.ops.object.mode_set(mode='EDIT')
         bm = bmesh.from_edit_mesh(obj.data)
+        bmesh.ops.triangulate(bm, faces=bm.faces)
         bm.verts.ensure_lookup_table()
         minX = min([v.co[0] for v in bm.verts])
         minY = min([v.co[1] for v in bm.verts])
