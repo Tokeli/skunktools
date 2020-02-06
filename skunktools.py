@@ -237,26 +237,33 @@ class SknkPanel(bpy.types.Panel):
         sp = bpy.context.scene.SknkProp
         layout = self.layout
         
-        layout.label(text="SecondLife Faces:", icon='FACESEL_HLT')
-        row = layout.row(align=True)
+        box = layout.box()
+        box.label(text="SecondLife Faces:", icon='FACESEL_HLT')
+        row = box.row(align=True)
         row.operator("sknk.createfaces")
         row.operator("sknk.setfaces")
         row.operator("sknk.assignfaces")
-        layout.separator()
         
-        layout.label(text="Physics Triangles:", icon='OUTLINER_DATA_MESH')
-        row = layout.row(align=True)
+        box = layout.box()
+        box.label(text="Physics Triangles:", icon='OUTLINER_DATA_MESH')
+        row = box.row(align=True)
         row.operator("sknk.degenerates")
-        layout.label(text="This triangulates your mesh! Use a copy!", icon='ERROR')
-        layout.separator()
+        box.label(text="This triangulates your mesh! Use a copy!", icon='ERROR')
         
-        layout.label(text="Paste Transforms:")
-        col = layout.column(align=True)
-        op = col.operator("sknk.paste_transforms", text="Position (meters)").type = 'POS'
-        op = col.operator("sknk.paste_transforms", text="Size (meters)").type = 'SCALE'
-        op = col.operator("sknk.paste_transforms", text="Rotation (degrees)").type = 'ROT'
-        layout.separator()
-        
+        box = layout.box()
+        col = box.column(align=True)
+        row = col.row(align=True)
+        row.label("Copy Transforms:", icon='COPYDOWN')
+        row.label("Paste Transforms:", icon='PASTEDOWN')
+        row = col.row(align=True)
+        op = row.operator("sknk.copy_transforms", text="Position").type = 'POS'
+        op = row.operator("sknk.paste_transforms", text="Position").type = 'POS'
+        row = col.row(align=True)
+        op = row.operator("sknk.copy_transforms", text="Size").type = 'SCALE'
+        op = row.operator("sknk.paste_transforms", text="Size").type = 'SCALE'
+        row = col.row(align=True)
+        op = row.operator("sknk.copy_transforms", text="Rotation").type = 'ROT'
+        op = row.operator("sknk.paste_transforms", text="Rotation").type = 'ROT'
         
         box = layout.box()
         box.label(text="Shapekeys And Modifiers:", icon='MODIFIER')
@@ -277,7 +284,6 @@ class SknkPanel(bpy.types.Panel):
         col = box.column(align=True)
         col.label(text="Non-Destructive Remove Doubles:", icon='SNAP_ON')        
         row = col.row(align=True)
-        #row.prop(sp, "isreversed")
         row.prop(sp, "delta")
         op = col.operator("sknk.weldselected")
         op.is_reversed = sp.isreversed
@@ -292,17 +298,16 @@ class SknkPanel(bpy.types.Panel):
         box.enabled = c.object is not None and c.object.mode == 'EDIT'
         #################################################################
         #################################################################
-        layout.separator()
-        col = layout.column(align=True)
+        box = layout.box()
+        col = box.column(align=True)
         col.label(text="Data Matching:", icon='OBJECT_DATAMODE')
         op = col.operator("sknk.shellmatch")
         row = col.row(align=True)
         row.prop(sp, "match_delta")
         row = col.row(align=True)
         row.prop(sp, "mainlayer", text="Objects layer")
-        row.prop(sp, "physicslayer", text="Physics layer")
-        
-        row = layout.row(align=True)
+        row.prop(sp, "physicslayer", text="Physics layer")        
+        row = box.row(align=True)
         row.operator("sknk.namefix")
         #################################################################
         #################################################################
@@ -550,17 +555,46 @@ class NameFix(bpy.types.Operator):
 
 
 
+class CopyTransforms(bpy.types.Operator):
+    bl_idname = "sknk.copy_transforms"
+    bl_label = "Copy Transforms"
+    
+    type = bpy.props.StringProperty(default = "")
+                    
+    @classmethod
+    def poll(cls, context):
+        o = context.active_object
+        clip = context.window_manager.clipboard
+        return (o is not None and o.type == 'MESH')
+        
+    def execute(self, context):
+        c = context
+        obj = c.active_object
+        clip = c.window_manager.clipboard
+        
+        if self.type == 'SCALE':
+            d = obj.dimensions
+            clip = "<{:.3f}, {:.3f}, {:.3f}>".format(d.x, d.y, d.z)
+            self.report({'INFO'}, "Copied scale: "+clip)
+        elif self.type == 'ROT':
+            r = obj.rotation_euler
+            x = math.degrees(r.x)
+            y = math.degrees(r.y)
+            z = math.degrees(r.z)
+            clip = "<{:.3f}, {:.3f}, {:.3f}>".format(x, y, z)
+            self.report({'INFO'}, "Copied rotation: "+clip)
+        elif self.type == 'POS':
+            d = obj.location
+            clip = "<{:.3f}, {:.3f}, {:.3f}>".format(d.x, d.y, d.z)
+            self.report({'INFO'}, "Copied position: "+clip)
+        return {"FINISHED"}
+        
 class PasteTransforms(bpy.types.Operator):
     bl_idname = "sknk.paste_transforms"
     bl_label = "Paste Transforms"
-    bl_options = {"REGISTER", "UNDO"}
+    bl_options = {"UNDO"}
     
     type = bpy.props.StringProperty(default = "")
-    # type = bpy.props.EnumProperty(
-                # items=(
-                    # ('ROT', 'rotation', 'r', ""),
-                    # ('SCALE', 'size', 's', ""),
-                    # ('POS', 'position', 'p', "")))
                     
     @classmethod
     def poll(cls, context):
@@ -576,8 +610,6 @@ class PasteTransforms(bpy.types.Operator):
         try:
             vec = mathutils.Vector( (float(x) for x in args) )
             rot = mathutils.Euler( (math.radians(float(x)) for x in args), 'XYZ' )
-            print(vec)
-            print(rot)
         except ValueError:
             self.report({'ERROR'}, "Non-number detected, cancelled")
             return {'CANCELLED'}
