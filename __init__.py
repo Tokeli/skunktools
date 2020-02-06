@@ -1,7 +1,7 @@
 bl_info = {
      "name": "Skunk Tools",
      "author": "Tokeli Zabelin",
-     "version": (2, 4, 0),
+     "version": (2, 4, 2),
      "blender": (2, 7, 9),
      "location": "3D VIEW > Left Toolbar > Tools",
      "description": "A small collection of tools for SL creation.",
