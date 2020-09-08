@@ -92,8 +92,6 @@ put_on_layers = lambda x: tuple((i in x) for i in range(20))
 
 def get_layer(obj):
     return next((x for x, i in enumerate(obj.layers) if i == True), 0)
-# Based off code by Przemysław Bągard, heavily tweaked.
-# https://github.com/przemir/apply_mod_on_shapekey_objs
 
 class Key():
     def __init__(self, key):
@@ -105,7 +103,8 @@ class Key():
         self.value = key.value
     
 
-
+# Based off code by Przemysław Bągard, heavily tweaked.
+# https://github.com/przemir/apply_mod_on_shapekey_objs
 def apply_mod_on_shapekey_objs(obj, modifier_name):
     c = bpy.context
     mesh = obj.data
@@ -293,6 +292,7 @@ class SknkPanel(bpy.types.Panel):
         op = col.operator("sknk.weightselected")
         op.is_reversed = sp.isreversed
         op.delta = sp.delta
+        box.prop(sp, "isreversed")
         box.prop(sp, "selected_obj_to_active")
         if sp.selected_obj_to_active:
             if len(c.selected_objects) < 2:
@@ -307,8 +307,8 @@ class SknkPanel(bpy.types.Panel):
         row = col.row(align=True)
         row.prop(sp, "match_delta")
         row = col.row(align=True)
-        row.prop(sp, "mainlayer", text="Objects layer")
-        row.prop(sp, "physicslayer", text="Physics layer")        
+        #row.prop(sp, "mainlayer", text="Objects layer")
+        #row.prop(sp, "physicslayer", text="Physics layer")        
         row = box.row(align=True)
         row.operator("sknk.namefix")
         #################################################################
@@ -460,7 +460,7 @@ def render_switch_to_shape_key(self, context):
     row = layout.row()
     row.operator("sknk.switchshape", text="Prev Shape", icon="TRIA_UP").dir = 'UP'
     row.operator("sknk.switchshape", text="Next Shape", icon="TRIA_DOWN").dir = 'DOWN'
-    row.operator("sknk.switchshape")
+    row.operator("sknk.switchshape", text="Selected Shape", icon="TRIA_RIGHT").dir = 'ACTIVE'
 # ############################################################################
 # Actual operators ###########################################################
 # ############################################################################
@@ -472,7 +472,7 @@ def get_first_layer(obj):
     return 0
 class MatchObjectsToShells(bpy.types.Operator):
     bl_idname = ("sknk.shellmatch")
-    bl_label = "Match Physics Meshes to Objects"
+    bl_label = "Match Physics/LODs to Meshes"
     bl_description = "Match objects to their physics meshes"
     
     @classmethod
@@ -556,7 +556,7 @@ class NameFix(bpy.types.Operator):
         return {"FINISHED"}
 
 
-
+# This doesn't really work 50% of the time. Blender clipboard BAD.
 class CopyTransforms(bpy.types.Operator):
     bl_idname = "sknk.copy_transforms"
     bl_label = "Copy Transforms"
@@ -591,6 +591,7 @@ class CopyTransforms(bpy.types.Operator):
             self.report({'INFO'}, "Copied position: "+clip)
         return {"FINISHED"}
         
+# This doesn't really work 50% of the time. Blender clipboard BAD.
 class PasteTransforms(bpy.types.Operator):
     bl_idname = "sknk.paste_transforms"
     bl_label = "Paste Transforms"
@@ -953,14 +954,25 @@ class SwitchToShapeKey(bpy.types.Operator):
                     obj.active_shape_key_index = len(blocks) - 1
                 else:
                     obj.active_shape_key_index -= 1
+                for block in obj.data.shape_keys.key_blocks:
+                    block.value = 0
+                obj.active_shape_key.value = 1
             elif self.dir == 'DOWN':                
                 if obj.active_shape_key_index >= len(blocks) -1:
                     obj.active_shape_key_index = 0
                 else:
                     obj.active_shape_key_index += 1
-            for block in obj.data.shape_keys.key_blocks:
-                block.value = 0
-            obj.active_shape_key.value = 1
+                for block in obj.data.shape_keys.key_blocks:
+                    block.value = 0
+                obj.active_shape_key.value = 1
+            elif self.dir == 'ACTIVE':
+                index = obj.active_shape_key_index
+            
+                for block in obj.data.shape_keys.key_blocks:
+                    block.value = 0
+                obj.active_shape_key_index = index
+                obj.active_shape_key.value = 1
+                
         return {"FINISHED"}
 
     
@@ -1438,12 +1450,12 @@ class SknkProp(bpy.types.PropertyGroup):
         description=("Max distance between matching objects"))
         
     isreversed = bpy.props.BoolProperty(
-        name=("Selected Verts to Unselected"),
-        default=True,
+        name=("Unelected Verts to Selected"),
+        default=False,
         description=("If unchecked, will make unselected verts move to selected instead"))
         
     selected_obj_to_active = bpy.props.BoolProperty(
-        name=("Snap Active to Selected"),
+        name=("Snap Active Obj to Selected"),
         default=False,
         description=("Snap vertices from active object, to selected object, instead of vertices on same mesh"))
         
